@@ -10,10 +10,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/cheggaaa/pb"
-	tty "github.com/jacobsa/go-serial/serial"
+	"golang.org/x/sys/unix"
 
 	"github.com/usedbytes/serial-flash/program"
 	"github.com/usedbytes/serial-flash/protocol"
@@ -25,6 +26,27 @@ func align(val, to uint32) uint32 {
 
 func usage() error {
 	return fmt.Errorf("Usage: %s PORT FILE [BASE]", os.Args[0])
+}
+
+func setSerialAttributes(fd int) error {
+	// Obtener los atributos actuales del puerto serial
+	termios, err := unix.IoctlGetTermios(fd, unix.TCGETS)
+	if err != nil {
+		return fmt.Errorf("ioctl TCGETS failed: %v", err)
+	}
+
+	// Configurar baud rate, data bits, stop bits, etc.
+	termios.Cflag = unix.B921600 | unix.CS8 | unix.CLOCAL | unix.CREAD
+	termios.Iflag = unix.IGNPAR
+	termios.Oflag = 0
+	termios.Lflag = 0
+
+	// Aplicar los nuevos atributos
+	if err := unix.IoctlSetTermios(fd, unix.TCSETS, termios); err != nil {
+		return fmt.Errorf("ioctl TCSETS failed: %v", err)
+	}
+
+	return nil
 }
 
 func run() error {
@@ -81,24 +103,19 @@ func run() error {
 
 		rw = conn
 	} else {
-		options := tty.OpenOptions{
-			PortName:              port,
-			BaudRate:              921600,
-			DataBits:              8,
-			StopBits:              1,
-			MinimumReadSize:       1,
-			InterCharacterTimeout: 100,
-		}
-
-		ser, err := tty.Open(options)
+		fd, err := syscall.Open(port, syscall.O_RDWR|syscall.O_NOCTTY|syscall.O_NONBLOCK, 0666)
 		if err != nil {
-			return fmt.Errorf("tty.Open %s: %v", port, err)
+			return fmt.Errorf("syscall.Open %s: %v", port, err)
 		}
-		defer ser.Close()
+		defer syscall.Close(fd)
+
+		if err := setSerialAttributes(fd); err != nil {
+			return fmt.Errorf("setSerialAttributes %s: %v", port, err)
+		}
 
 		fmt.Println("Opened", port)
 
-		rw = ser
+		rw = os.NewFile(uintptr(fd), port)
 	}
 
 	prog := make(chan program.ProgressReport)
