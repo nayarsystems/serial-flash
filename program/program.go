@@ -3,6 +3,7 @@
 package program
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -37,7 +38,7 @@ func reportProgress(reportChan chan<- ProgressReport, stage string, progress int
 	}
 }
 
-func sync(rw io.ReadWriter, progress chan<- ProgressReport) error {
+func sync(ctx context.Context, rw io.ReadWriter, progress chan<- ProgressReport) error {
 	var err error
 
 	for i := 0; i < maxSyncAttempts; i++ {
@@ -52,6 +53,9 @@ func sync(rw io.ReadWriter, progress chan<- ProgressReport) error {
 		} else if !errors.Is(err, protocol.ErrNotSynced) {
 			return err
 		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 	}
 
 	return err
@@ -62,11 +66,15 @@ func align(val, to uint32) uint32 {
 }
 
 func Program(rw io.ReadWriter, img *Image, progress chan<- ProgressReport) error {
+	return ProgramWithCtx(context.Background(), rw, img, progress)
+}
+
+func ProgramWithCtx(ctx context.Context, rw io.ReadWriter, img *Image, progress chan<- ProgressReport) error {
 	if progress != nil {
 		defer close(progress)
 	}
 
-	err := sync(rw, progress)
+	err := sync(ctx, rw, progress)
 	if err != nil {
 		return fmt.Errorf("sync: %v", err)
 	}
@@ -106,6 +114,9 @@ func Program(rw io.ReadWriter, img *Image, progress chan<- ProgressReport) error
 		if err != nil {
 			return fmt.Errorf("erase: %v", err)
 		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 	}
 
 	reportProgress(progress, "Writing", 0, len(data))
@@ -124,6 +135,9 @@ func Program(rw io.ReadWriter, img *Image, progress chan<- ProgressReport) error
 		reportProgress(progress, "Writing", int(end), len(data))
 		if err != nil {
 			return fmt.Errorf("write: %v", err)
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
 	}
 
