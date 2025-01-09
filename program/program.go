@@ -65,6 +65,10 @@ func align(val, to uint32) uint32 {
 	return (val + (to - 1)) & ^(to - 1)
 }
 
+func Sync(ctx context.Context, rw io.ReadWriter) error {
+	return sync(ctx, rw, nil)
+}
+
 func Program(rw io.ReadWriter, img *Image, progress chan<- ProgressReport) error {
 	return ProgramWithCtx(context.Background(), rw, img, progress)
 }
