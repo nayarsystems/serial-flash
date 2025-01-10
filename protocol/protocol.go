@@ -21,6 +21,7 @@ var (
 	OpcodeSeal       [4]byte = [4]byte{'S', 'E', 'A', 'L'}
 	OpcodeGo         [4]byte = [4]byte{'G', 'O', 'G', 'O'}
 	OpcodeInfo       [4]byte = [4]byte{'I', 'N', 'F', 'O'}
+	OpcodeReboot     [4]byte = [4]byte{'B', 'O', 'O', 'T'}
 	ResponseSync     [4]byte = [4]byte{'P', 'I', 'C', 'O'}
 	ResponseSyncWota [4]byte = [4]byte{'W', 'O', 'T', 'A'}
 	ResponseOK       [4]byte = [4]byte{'O', 'K', 'O', 'K'}
@@ -304,6 +305,32 @@ func (c *GoCommand) Execute(rw io.ReadWriter) error {
 
 	copy(buf[0:], OpcodeGo[:])
 	binary.LittleEndian.PutUint32(buf[4:], c.Addr)
+
+	n, err := rw.Write(buf)
+	if err != nil {
+		return err
+	} else if n != len(buf) {
+		return fmt.Errorf("unexpected write length: %v", n)
+	}
+
+	// Fire and forget
+
+	return nil
+}
+
+type RebootCommand struct {
+	Bootloader bool
+}
+
+func (c *RebootCommand) Execute(rw io.ReadWriter) error {
+	buf := make([]byte, len(OpcodeReboot)+4)
+
+	copy(buf[0:], OpcodeReboot[:])
+	var arg0 uint32
+	if c.Bootloader {
+		arg0 = 1
+	}
+	binary.LittleEndian.PutUint32(buf[4:], arg0)
 
 	n, err := rw.Write(buf)
 	if err != nil {
